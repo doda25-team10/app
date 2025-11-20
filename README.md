@@ -13,4 +13,6 @@ The frontend service can be started through running the `Main` class (e.g., in y
 
 The server runs on port 8080. Once its startup has finished, you can access [localhost:8080/sms](http://localhost:8080/sms) in your browser to interact with the application.
 
-
+If you want to use Docker, run it using `docker run --rm --env-file .env.local -p{port}:{port} {imageName}` where 
+{imageName} is the name you gave to the docker image when building it, and port is the server port. The server port and model_host url 
+can be changed by editing the .env.local file
