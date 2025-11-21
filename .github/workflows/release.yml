@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - fix-versioning
     paths:
       - "pom.xml"
   workflow_dispatch:
