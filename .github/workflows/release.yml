@@ -2,8 +2,9 @@ name: Release app-service
 
 on:
   push:
-    branches:
-      - main
+    paths:
+      - "app-service/**"
+  pull_request:
     paths:
       - "app-service/**"
   workflow_dispatch:
@@ -38,6 +39,7 @@ jobs:
       
 
       - name: Login to GHCR
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -50,11 +52,11 @@ jobs:
           install: true
 
       - name: Build and push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ./app-service
           file: ./app-service/Dockerfile
-          push: true
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           platforms: linux/amd64,linux/arm64
           build-args: |
             MODEL_VERSION=${{ env.VERSION }}
