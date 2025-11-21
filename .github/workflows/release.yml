@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - workflow-update
     paths:
       - "pom.xml"
       - "app-service/**"
@@ -41,7 +40,6 @@ jobs:
       
 
       - name: Login to GHCR
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -58,7 +56,7 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: true
           platforms: linux/amd64,linux/arm64
           build-args: |
             MODEL_VERSION=${{ env.VERSION }}
