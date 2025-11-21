@@ -24,7 +24,7 @@ jobs:
 
       - name: Extract version from pom.xml
         run: |
-          VERSION=$(mvn -f app-service/pom.xml help:evaluate -Dexpression=project.version -q -DforceStdout)
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Version detected: $VERSION"
 
