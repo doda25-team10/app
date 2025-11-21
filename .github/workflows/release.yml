@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "pom.xml"
+      - "app-service/**"
   workflow_dispatch:
 
 permissions:
@@ -23,7 +23,7 @@ jobs:
 
       - name: Extract version from pom.xml
         run: |
-          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
+          VERSION=$(mvn -f app-service/pom.xml help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Version detected: $VERSION"
 
@@ -52,12 +52,14 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./app-service
+          file: ./app-service/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           build-args: |
             MODEL_VERSION=${{ env.VERSION }}
+            GITHUB_USERNAME=${{ github.actor }}
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           tags: |
             ${{ env.IMAGE }}:${{ env.VERSION }}
             ${{ env.IMAGE }}:${{ env.MAJOR }}.${{ env.MINOR }}.latest
