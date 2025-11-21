@@ -11,7 +11,7 @@
 	</parent>
 	<groupId>sms</groupId>
 	<artifactId>frontend</artifactId>
-	<version>0.0.3-SNAPSHOT</version>
+	<version>0.0.4-SNAPSHOT</version>
 
 	<properties>
 		<java.version>25</java.version>
