@@ -2,11 +2,13 @@ name: Release app-service
 
 on:
   push:
+    branches:
+      - main
+      - workflow-update
     paths:
+      - "pom.xml"
       - "app-service/**"
-  pull_request:
-    paths:
-      - "app-service/**"
+
   workflow_dispatch:
 
 permissions:
