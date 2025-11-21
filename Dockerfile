@@ -4,8 +4,29 @@ FROM maven:3.9-eclipse-temurin-25-alpine AS builder
 # Set working directory
 WORKDIR /build
 
+# GitHub Packages credentials for Maven (passed at build time)
+ARG GITHUB_USERNAME
+ARG GITHUB_TOKEN
+
 # Copy pom.xml
 COPY pom.xml .
+
+# Configure Maven settings.xml to access GitHub Packages
+RUN mkdir -p /root/.m2 && \
+    echo '<settings>' > /root/.m2/settings.xml && \
+    echo '  <servers>' >> /root/.m2/settings.xml && \
+    echo '    <server>' >> /root/.m2/settings.xml && \
+    echo '      <id>github-lib-version</id>' >> /root/.m2/settings.xml && \
+    echo "      <username>${GITHUB_USERNAME}</username>" >> /root/.m2/settings.xml && \
+    echo "      <password>${GITHUB_TOKEN}</password>" >> /root/.m2/settings.xml && \
+    echo '    </server>' >> /root/.m2/settings.xml && \
+    echo '    <server>' >> /root/.m2/settings.xml && \
+    echo '      <id>github-lib-version-releases</id>' >> /root/.m2/settings.xml && \
+    echo "      <username>${GITHUB_USERNAME}</username>" >> /root/.m2/settings.xml && \
+    echo "      <password>${GITHUB_TOKEN}</password>" >> /root/.m2/settings.xml && \
+    echo '    </server>' >> /root/.m2/settings.xml && \
+    echo '  </servers>' >> /root/.m2/settings.xml && \
+    echo '</settings>' >> /root/.m2/settings.xml
 
 # Download dependencies, uses caching if pom.xml doesnt change --> speedup
 RUN mvn dependency:go-offline -B

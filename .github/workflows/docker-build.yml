@@ -1,0 +1,38 @@
+name: Build app-service (Docker)
+
+on:
+  push:
+    paths:
+      - 'app-service/**'
+  pull_request:
+    paths:
+      - 'app-service/**'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-service
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app-service
+          push: false
+          tags: app-service:ci
+          build-args: |
+            GITHUB_USERNAME=${{ github.actor }}
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
+

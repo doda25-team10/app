@@ -16,3 +16,26 @@ The server runs on port 8080. Once its startup has finished, you can access [loc
 If you want to use Docker, run it using `docker run --rm --env-file .env.local -p{port}:{port} {imageName}` where 
 {imageName} is the name you gave to the docker image when building it, and port is the server port. The server port and model_host url 
 can be changed by editing the .env.local file
+
+## Quick start (Docker)
+
+Build the image (requires GitHub Packages credentials as build args):
+
+```
+docker build \
+  --build-arg GITHUB_USERNAME=<github_username> \
+  --build-arg GITHUB_TOKEN='<token_with_read:packages_and_SSO>' \
+  -t app-service:local .
+```
+
+Run locally:
+
+```
+docker run --rm -p 8080:8080 \
+  -e MODEL_HOST=http://localhost:8081 \
+  app-service:local
+```
+
+Test:
+- Root: http://localhost:8080/ → “Hello World! lib-version=…”
+- UI:   http://localhost:8080/sms

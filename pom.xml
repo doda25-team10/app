@@ -15,7 +15,9 @@
 
 	<properties>
 		<java.version>25</java.version>
+		<lib.version>0.1.0</lib.version>
 	</properties>
+
 
 	<dependencies>
 		<dependency>
@@ -28,12 +30,31 @@
 		</dependency>
 
 		<dependency>
+			<groupId>releases.dev.doda.team</groupId>
+			<artifactId>lib-version</artifactId>
+			<version>${lib.version}</version>
+		</dependency>
+
+		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
 	</dependencies>
 
+	<repositories>
+		<repository>
+			<id>github-lib-version</id>
+			<name>GitHub Packages - lib-version</name>
+			<url>https://maven.pkg.github.com/doda25-team10/lib-version</url>
+			<releases>
+				<enabled>true</enabled>
+			</releases>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
 
 	<build>
 		<plugins>
