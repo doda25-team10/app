@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "pom.xml"
+
   workflow_dispatch:
 
 permissions:
@@ -50,7 +51,7 @@ jobs:
           install: true
 
       - name: Build and push image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -58,6 +59,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           build-args: |
             MODEL_VERSION=${{ env.VERSION }}
+            GITHUB_USERNAME=${{ github.actor }}
+            GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
           tags: |
             ${{ env.IMAGE }}:${{ env.VERSION }}
             ${{ env.IMAGE }}:${{ env.MAJOR }}.${{ env.MINOR }}.latest
