@@ -24,11 +24,10 @@ jobs:
 
       - name: Extract version from pom.xml
         run: |
-          VERSION=$(xmllint --xpath "/*[local-name()='project']/*[local-name()='version'][not(parent::*/local-name()='parent')]/text()" pom.xml)
+          VERSION=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "Version detected: $VERSION"
 
-          # Split version into MAJOR/MINOR/PATCH
           VERSION_NO_SUFFIX=$(echo "$VERSION" | sed 's/-.*//')
           MAJOR=$(echo "$VERSION_NO_SUFFIX" | cut -d. -f1)
           MINOR=$(echo "$VERSION_NO_SUFFIX" | cut -d. -f2)
@@ -37,6 +36,7 @@ jobs:
           echo "MAJOR=$MAJOR" >> $GITHUB_ENV
           echo "MINOR=$MINOR" >> $GITHUB_ENV
           echo "PATCH=$PATCH" >> $GITHUB_ENV
+      
 
       - name: Login to GHCR
         uses: docker/login-action@v3
