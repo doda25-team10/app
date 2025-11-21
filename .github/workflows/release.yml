@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "pom.xml"
-      - "app-service/**"
 
   workflow_dispatch:
 
