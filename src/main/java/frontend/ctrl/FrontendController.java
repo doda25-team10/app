@@ -2,9 +2,12 @@ package frontend.ctrl;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.env.Environment;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,6 +22,8 @@ import jakarta.servlet.http.HttpServletRequest;
 @Controller
 @RequestMapping(path = "/sms")
 public class FrontendController {
+
+    private final AtomicLong smsCounter = new AtomicLong(); // <- Counter
 
     private String modelHost;
 
@@ -53,6 +58,7 @@ public class FrontendController {
 
     @GetMapping("/")
     public String index(Model m) {
+        smsCounter.incrementAndGet(); // <- Increment counter on GET
         m.addAttribute("hostname", modelHost);
         return "sms/index";
     }
@@ -60,6 +66,7 @@ public class FrontendController {
     @PostMapping({ "", "/" })
     @ResponseBody
     public Sms predict(@RequestBody Sms sms) {
+        smsCounter.incrementAndGet(); // <- Increment counter on POST
         System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
         sms.result = getPrediction(sms);
         System.out.printf("Prediction: %s\n", sms.result);
@@ -74,5 +81,16 @@ public class FrontendController {
         } catch (URISyntaxException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    // --- Prometheus endpoint for /sms counter ---
+    @GetMapping(value = "/metrics", produces = MediaType.TEXT_PLAIN_VALUE)
+    @ResponseBody
+    public ResponseEntity<String> metrics() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("# HELP sms_requests_total Total number of hits to /sms\n");
+        sb.append("# TYPE sms_requests_total counter\n");
+        sb.append("sms_requests_total ").append(smsCounter.get()).append("\n");
+        return ResponseEntity.ok().body(sb.toString());
     }
 }
