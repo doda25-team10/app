@@ -15,10 +15,6 @@ public class MetricsController {
 
     @GetMapping({"", "/"})
     public String metrics() {
-        double r = random.nextDouble(); // random value between 0.0 and 1.0
-
-        return "# HELP my_random This is just a random 'gauge' for illustration.\n" +
-           "# TYPE my_random gauge\n" +
-           "my_random " + r + "\n\n";
+        return "";
     }
 }
