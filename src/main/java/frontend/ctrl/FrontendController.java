@@ -3,6 +3,7 @@ package frontend.ctrl;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.DoubleAdder;
 
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.env.Environment;
@@ -23,10 +24,20 @@ import jakarta.servlet.http.HttpServletRequest;
 @RequestMapping(path = "/sms")
 public class FrontendController {
 
-    private final AtomicLong smsCounter = new AtomicLong(); // <- Counter
+    private final AtomicLong counterSpam = new AtomicLong();
+    private final AtomicLong counterHam = new AtomicLong();
+
+    private final AtomicLong gaugeLastLength = new AtomicLong();
+
+    // Buckets: 0.1s, 0.5s, 1.0s, +Inf
+    private final AtomicLong histBucket01 = new AtomicLong();
+    private final AtomicLong histBucket05 = new AtomicLong();
+    private final AtomicLong histBucket10 = new AtomicLong();
+    private final AtomicLong histBucketInf = new AtomicLong();
+    private final DoubleAdder histSum = new DoubleAdder();
+    private final AtomicLong histCount = new AtomicLong();
 
     private String modelHost;
-
     private RestTemplateBuilder rest;
 
     public FrontendController(RestTemplateBuilder rest, Environment env) {
@@ -52,13 +63,11 @@ public class FrontendController {
 
     @GetMapping("")
     public String redirectToSlash(HttpServletRequest request) {
-        // relative REST requests in JS will end up on / and not on /sms
         return "redirect:" + request.getRequestURI() + "/";
     }
 
     @GetMapping("/")
     public String index(Model m) {
-        smsCounter.incrementAndGet(); // <- Increment counter on GET
         m.addAttribute("hostname", modelHost);
         return "sms/index";
     }
@@ -66,9 +75,17 @@ public class FrontendController {
     @PostMapping({ "", "/" })
     @ResponseBody
     public Sms predict(@RequestBody Sms sms) {
-        smsCounter.incrementAndGet(); // <- Increment counter on POST
         System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
-        sms.result = getPrediction(sms);
+
+        long startTime = System.nanoTime();
+
+        try {
+            sms.result = getPrediction(sms);
+        } finally {
+            long durationNanos = System.nanoTime() - startTime;
+            recordMetrics(sms.result, sms.sms.length(), durationNanos);
+        }
+
         System.out.printf("Prediction: %s\n", sms.result);
         return sms;
     }
@@ -83,14 +100,52 @@ public class FrontendController {
         }
     }
 
-    // --- Prometheus endpoint for /sms counter ---
+    private void recordMetrics(String result, int length, long durationNanos) {
+        if ("SPAM".equalsIgnoreCase(result)) {
+            counterSpam.incrementAndGet();
+        } else {
+            counterHam.incrementAndGet();
+        }
+
+        gaugeLastLength.set(length);
+
+        double durationSeconds = durationNanos / 1_000_000_000.0;
+        histSum.add(durationSeconds);
+        histCount.incrementAndGet();
+        
+        if (durationSeconds <= 0.1) histBucket01.incrementAndGet();
+        if (durationSeconds <= 0.5) histBucket05.incrementAndGet();
+        if (durationSeconds <= 1.0) histBucket10.incrementAndGet();
+        histBucketInf.incrementAndGet(); // +Inf always increments
+    }
+
+    // --- Prometheus endpoint ---
     @GetMapping(value = "/metrics", produces = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
     public ResponseEntity<String> metrics() {
         StringBuilder sb = new StringBuilder();
-        sb.append("# HELP sms_requests_total Total number of hits to /sms\n");
-        sb.append("# TYPE sms_requests_total counter\n");
-        sb.append("sms_requests_total ").append(smsCounter.get()).append("\n");
+
+        // 1. Counter: sms_predictions_total
+        sb.append("# HELP sms_predictions_total Total number of prediction requests\n");
+        sb.append("# TYPE sms_predictions_total counter\n");
+        sb.append("sms_predictions_total{result=\"spam\"} ").append(counterSpam.get()).append("\n");
+        sb.append("sms_predictions_total{result=\"ham\"} ").append(counterHam.get()).append("\n");
+
+        // 2. Gauge: sms_last_text_length
+        sb.append("# HELP sms_last_text_length Length of the last checked SMS text\n");
+        sb.append("# TYPE sms_last_text_length gauge\n");
+        sb.append("sms_last_text_length ").append(gaugeLastLength.get()).append("\n");
+
+        // 3. Histogram: sms_prediction_duration_seconds
+        sb.append("# HELP sms_prediction_duration_seconds Prediction latency in seconds\n");
+        sb.append("# TYPE sms_prediction_duration_seconds histogram\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.1\"} ").append(histBucket01.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.5\"} ").append(histBucket05.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"1.0\"} ").append(histBucket10.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"+Inf\"} ").append(histBucketInf.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_sum ").append(histSum.sum()).append("\n");
+        sb.append("sms_prediction_duration_seconds_count ").append(histCount.get()).append("\n");
+
         return ResponseEntity.ok().body(sb.toString());
     }
 }
