@@ -54,4 +54,4 @@ ENV MODEL_HOST=http://model-service:8081
 EXPOSE ${SERVER_PORT}
 
 # Run the application
-ENTRYPOINT ["sh", "-c", "java -Dserver.port=${SERVER_PORT} -jar app.jar"]
+ENTRYPOINT ["sh", "-c", "java -Dserver.port=${SERVER_PORT} -Dmodel.host=${MODEL_HOST} -jar app.jar"]
