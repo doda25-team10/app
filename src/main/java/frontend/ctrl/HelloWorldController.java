@@ -12,6 +12,6 @@ public class HelloWorldController {
     @ResponseBody
     public String index() {
 		var version = new VersionUtil().getVersion();
-		return "Hello World! lib-version=" + version;
+		return "Hello from outer space!  lib-version=" + version;
     }
 }
