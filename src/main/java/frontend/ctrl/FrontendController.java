@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.DoubleAdder;
 
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
@@ -51,9 +52,10 @@ public class FrontendController {
     private String modelHost;
     private RestTemplateBuilder rest;
 
-    public FrontendController(RestTemplateBuilder rest, Environment env) {
+    public FrontendController(RestTemplateBuilder rest, Environment env, BuildProperties buildProperties) {
         this.rest = rest;
         this.modelHost = env.getProperty("MODEL_HOST");
+        this.version = buildProperties.getVersion();
         assertModelHost();
     }
 
@@ -155,35 +157,35 @@ public class FrontendController {
         // 1. Counter: sms_predictions_total
         sb.append("# HELP sms_predictions_total Total number of prediction requests\n");
         sb.append("# TYPE sms_predictions_total counter\n");
-        sb.append("sms_predictions_total{result=\"spam\"} ").append(counterSpam.get()).append("\n");
-        sb.append("sms_predictions_total{result=\"ham\"} ").append(counterHam.get()).append("\n");
+        sb.append("sms_predictions_total{result=\"spam\",version=\"").append(version).append("\"} ").append(counterSpam.get()).append("\n");
+        sb.append("sms_predictions_total{result=\"ham\",version=\"").append(version).append("\"} ").append(counterHam.get()).append("\n");
 
         // 2. Gauge: sms_last_text_length
         sb.append("# HELP sms_last_text_length Length of the last checked SMS text\n");
         sb.append("# TYPE sms_last_text_length gauge\n");
-        sb.append("sms_last_text_length ").append(gaugeLastLength.get()).append("\n");
+        sb.append("sms_last_text_length{version=\"").append(version).append("\"} ").append(gaugeLastLength.get()).append("\n");
 
         // 3. Histogram: sms_prediction_duration_seconds
         sb.append("# HELP sms_prediction_duration_seconds Prediction latency in seconds\n");
         sb.append("# TYPE sms_prediction_duration_seconds histogram\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.1\"} ").append(histBucket01.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.5\"} ").append(histBucket05.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"1.0\"} ").append(histBucket10.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"+Inf\"} ").append(histBucketInf.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_sum ").append(histSum.sum()).append("\n");
-        sb.append("sms_prediction_duration_seconds_count ").append(histCount.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.1\",version=\"").append(version).append("\"} ").append(histBucket01.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.5\",version=\"").append(version).append("\"} ").append(histBucket05.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"1.0\",version=\"").append(version).append("\"} ").append(histBucket10.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(histBucketInf.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_sum{version=\"").append(version).append("\"} ").append(histSum.sum()).append("\n");
+        sb.append("sms_prediction_duration_seconds_count{version=\"").append(version).append("\"} ").append(histCount.get()).append("\n");
 
         // 4. Histogram: first_sms_request_duration_seconds
         sb.append("# HELP sms_first_request_duration_seconds First request latency in seconds\n");
         sb.append("# TYPE sms_first_request_duration_seconds histogram\n");
-        sb.append("sms_first_request_duration_seconds_bucket{le=\"1\"} ").append(firstRequestHistBucket01.get()).append("\n");
-        sb.append("sms_first_request_duration_seconds_bucket{le=\"5\"} ").append(firstRequestHistBucket05.get()).append("\n");
-        sb.append("sms_first_request_duration_seconds_bucket{le=\"10\"} ").append(firstRequestHistBucket10.get()).append("\n");
-        sb.append("sms_first_request_duration_seconds_bucket{le=\"15\"} ").append(firstRequestHistBucket15.get()).append("\n");
-        sb.append("sms_first_request_duration_seconds_bucket{le=\"30\"} ").append(firstRequestHistBucket30.get()).append("\n");
-        sb.append("sms_first_request_duration_seconds_bucket{le=\"+Inf\"} ").append(firstRequestHistBucketInf.get()).append("\n");
-        sb.append("sms_first_request_duration_seconds_sum ").append(firstRequestHistSum.sum()).append("\n");
-        sb.append("sms_first_request_duration_seconds_count ").append(firstRequestHistCount.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"1\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket01.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"5\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket05.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"10\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket10.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"15\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket15.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"30\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket30.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(firstRequestHistBucketInf.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_sum{version=\"").append(version).append("\"} ").append(firstRequestHistSum.sum()).append("\n");
+        sb.append("sms_first_request_duration_seconds_count{version=\"").append(version).append("\"} ").append(firstRequestHistCount.get()).append("\n");
 
         return ResponseEntity.ok().body(sb.toString());
     }
