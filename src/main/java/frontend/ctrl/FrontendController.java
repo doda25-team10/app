@@ -5,6 +5,7 @@ import java.net.URISyntaxException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.DoubleAdder;
 
+import org.springframework.boot.info.BuildProperties;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 
 import frontend.data.Sms;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 
 @Controller
 @RequestMapping(path = "/sms")
@@ -37,12 +39,37 @@ public class FrontendController {
     private final DoubleAdder histSum = new DoubleAdder();
     private final AtomicLong histCount = new AtomicLong();
 
-    private String modelHost;
-    private RestTemplateBuilder rest;
+    // Buckets: 1s, 5s, 10s, 15s, 30s, +Inf
+    private final AtomicLong firstRequestHistBucket01 = new AtomicLong();
+    private final AtomicLong firstRequestHistBucket05 = new AtomicLong();
+    private final AtomicLong firstRequestHistBucket10 = new AtomicLong();
+    private final AtomicLong firstRequestHistBucket15 = new AtomicLong();
+    private final AtomicLong firstRequestHistBucket30 = new AtomicLong();
+    private final AtomicLong firstRequestHistBucketInf = new AtomicLong();
+    private final DoubleAdder firstRequestHistSum = new DoubleAdder();
+    private final AtomicLong firstRequestHistCount = new AtomicLong();
 
-    public FrontendController(RestTemplateBuilder rest, Environment env) {
+    // Buckets: 1s, 5s, 10s, 15s, 30s, +Inf
+    private final AtomicLong interRequestHistBucket01 = new AtomicLong();
+    private final AtomicLong interRequestHistBucket05 = new AtomicLong();
+    private final AtomicLong interRequestHistBucket10 = new AtomicLong();
+    private final AtomicLong interRequestHistBucket15 = new AtomicLong();
+    private final AtomicLong interRequestHistBucket30 = new AtomicLong();
+    private final AtomicLong interRequestHistBucketInf = new AtomicLong();
+    private final DoubleAdder interRequestHistSum = new DoubleAdder();
+    private final AtomicLong interRequestHistCount = new AtomicLong();
+
+    private final RestTemplateBuilder rest;
+    private final AtomicLong pageAbandoned = new AtomicLong();
+    private final String version;
+
+    private String modelHost;
+    private long prevRequestTime;
+
+    public FrontendController(RestTemplateBuilder rest, Environment env, BuildProperties buildProperties) {
         this.rest = rest;
         this.modelHost = env.getProperty("MODEL_HOST");
+        this.version = buildProperties.getVersion();
         assertModelHost();
     }
 
@@ -67,23 +94,34 @@ public class FrontendController {
     }
 
     @GetMapping("/")
-    public String index(Model m) {
+    public String index(Model m, HttpSession session) {
+        // Store the time of page opening
+        session.setAttribute("pageOpenTime", System.nanoTime());
+        session.setAttribute("firstReq", true);
+
+        pageAbandoned.incrementAndGet();
+        session.setAttribute("hasMadePrediction", false);
+
         m.addAttribute("hostname", modelHost);
+        prevRequestTime = System.nanoTime();
         return "sms/index";
     }
 
     @PostMapping({ "", "/" })
     @ResponseBody
-    public Sms predict(@RequestBody Sms sms) {
+    public Sms predict(@RequestBody Sms sms, HttpSession session) {
         System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
 
         long startTime = System.nanoTime();
+        long firstReqTime = startTime - (long)session.getAttribute("pageOpenTime");
+        long interRequestTime = startTime - prevRequestTime;
+        prevRequestTime = startTime;
 
         try {
             sms.result = getPrediction(sms);
         } finally {
             long durationNanos = System.nanoTime() - startTime;
-            recordMetrics(sms.result, sms.sms.length(), durationNanos);
+            recordMetrics(sms.result, sms.sms.length(), durationNanos, firstReqTime, interRequestTime, session);
         }
 
         System.out.printf("Prediction: %s\n", sms.result);
@@ -100,7 +138,7 @@ public class FrontendController {
         }
     }
 
-    private void recordMetrics(String result, int length, long durationNanos) {
+    private void recordMetrics(String result, int length, long durationNanos, long firstReqTime, long interRequestTime, HttpSession session) {
         if ("SPAM".equalsIgnoreCase(result)) {
             counterSpam.incrementAndGet();
         } else {
@@ -117,6 +155,35 @@ public class FrontendController {
         if (durationSeconds <= 0.5) histBucket05.incrementAndGet();
         if (durationSeconds <= 1.0) histBucket10.incrementAndGet();
         histBucketInf.incrementAndGet(); // +Inf always increments
+
+        if((boolean)session.getAttribute("firstReq")) {
+            session.setAttribute("firstReq", false);
+            double firstReqSeconds = firstReqTime / 1_000_000_000.0;
+            firstRequestHistSum.add(firstReqSeconds);
+            firstRequestHistCount.incrementAndGet();
+
+            if (firstReqSeconds <= 1.0) firstRequestHistBucket01.incrementAndGet();
+            if (firstReqSeconds <= 5.0) firstRequestHistBucket05.incrementAndGet();
+            if (firstReqSeconds <= 10.0) firstRequestHistBucket10.incrementAndGet();
+            if (firstReqSeconds <= 15.0) firstRequestHistBucket15.incrementAndGet();
+            if (firstReqSeconds <= 30.0) firstRequestHistBucket30.incrementAndGet();
+            firstRequestHistBucketInf.incrementAndGet(); // +Inf always increments
+        }
+
+        double interRequestSeconds = interRequestTime / 1_000_000_000.0;
+        interRequestHistSum.add(interRequestSeconds);
+        interRequestHistCount.incrementAndGet();
+        if (interRequestSeconds <= 1.0) interRequestHistBucket01.incrementAndGet();
+        if (interRequestSeconds <= 5.0) interRequestHistBucket05.incrementAndGet();
+        if (interRequestSeconds <= 10.0) interRequestHistBucket10.incrementAndGet();
+        if (interRequestSeconds <= 15.0) interRequestHistBucket15.incrementAndGet();
+        if (interRequestSeconds <= 30.0) interRequestHistBucket30.incrementAndGet();
+        interRequestHistBucketInf.incrementAndGet(); // +Inf always increments
+
+        if (!(boolean)session.getAttribute("hasMadePrediction")) {
+            pageAbandoned.decrementAndGet();
+            session.setAttribute("hasMadePrediction", true);
+        }
     }
 
     // --- Prometheus endpoint ---
@@ -128,23 +195,52 @@ public class FrontendController {
         // 1. Counter: sms_predictions_total
         sb.append("# HELP sms_predictions_total Total number of prediction requests\n");
         sb.append("# TYPE sms_predictions_total counter\n");
-        sb.append("sms_predictions_total{result=\"spam\"} ").append(counterSpam.get()).append("\n");
-        sb.append("sms_predictions_total{result=\"ham\"} ").append(counterHam.get()).append("\n");
+        sb.append("sms_predictions_total{result=\"spam\",version=\"").append(version).append("\"} ").append(counterSpam.get()).append("\n");
+        sb.append("sms_predictions_total{result=\"ham\",version=\"").append(version).append("\"} ").append(counterHam.get()).append("\n");
 
         // 2. Gauge: sms_last_text_length
         sb.append("# HELP sms_last_text_length Length of the last checked SMS text\n");
         sb.append("# TYPE sms_last_text_length gauge\n");
-        sb.append("sms_last_text_length ").append(gaugeLastLength.get()).append("\n");
+        sb.append("sms_last_text_length{version=\"").append(version).append("\"} ").append(gaugeLastLength.get()).append("\n");
 
         // 3. Histogram: sms_prediction_duration_seconds
         sb.append("# HELP sms_prediction_duration_seconds Prediction latency in seconds\n");
         sb.append("# TYPE sms_prediction_duration_seconds histogram\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.1\"} ").append(histBucket01.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.5\"} ").append(histBucket05.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"1.0\"} ").append(histBucket10.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_bucket{le=\"+Inf\"} ").append(histBucketInf.get()).append("\n");
-        sb.append("sms_prediction_duration_seconds_sum ").append(histSum.sum()).append("\n");
-        sb.append("sms_prediction_duration_seconds_count ").append(histCount.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.1\",version=\"").append(version).append("\"} ").append(histBucket01.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"0.5\",version=\"").append(version).append("\"} ").append(histBucket05.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"1.0\",version=\"").append(version).append("\"} ").append(histBucket10.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(histBucketInf.get()).append("\n");
+        sb.append("sms_prediction_duration_seconds_sum{version=\"").append(version).append("\"} ").append(histSum.sum()).append("\n");
+        sb.append("sms_prediction_duration_seconds_count{version=\"").append(version).append("\"} ").append(histCount.get()).append("\n");
+
+        // 4. Histogram: first_sms_request_duration_seconds
+        sb.append("# HELP sms_first_request_duration_seconds First request latency in seconds\n");
+        sb.append("# TYPE sms_first_request_duration_seconds histogram\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"1\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket01.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"5\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket05.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"10\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket10.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"15\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket15.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"30\",version=\"").append(version).append("\"} ").append(firstRequestHistBucket30.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(firstRequestHistBucketInf.get()).append("\n");
+        sb.append("sms_first_request_duration_seconds_sum{version=\"").append(version).append("\"} ").append(firstRequestHistSum.sum()).append("\n");
+        sb.append("sms_first_request_duration_seconds_count{version=\"").append(version).append("\"} ").append(firstRequestHistCount.get()).append("\n");
+
+        // 5. Histogram: inter_sms_request_duration_seconds
+        sb.append("# HELP sms_inter_request_duration_seconds Inter request latency in seconds\n");
+        sb.append("# TYPE sms_inter_request_duration_seconds histogram\n");
+        sb.append("sms_inter_request_duration_seconds_bucket{le=\"1\",version=\"").append(version).append("\"} ").append(interRequestHistBucket01.get()).append("\n");
+        sb.append("sms_inter_request_duration_seconds_bucket{le=\"5\",version=\"").append(version).append("\"} ").append(interRequestHistBucket05.get()).append("\n");
+        sb.append("sms_inter_request_duration_seconds_bucket{le=\"10\",version=\"").append(version).append("\"} ").append(interRequestHistBucket10.get()).append("\n");
+        sb.append("sms_inter_request_duration_seconds_bucket{le=\"15\",version=\"").append(version).append("\"} ").append(interRequestHistBucket15.get()).append("\n");
+        sb.append("sms_inter_request_duration_seconds_bucket{le=\"30\",version=\"").append(version).append("\"} ").append(interRequestHistBucket30.get()).append("\n");
+        sb.append("sms_inter_request_duration_seconds_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(interRequestHistBucketInf.get()).append("\n");
+        sb.append("sms_inter_request_duration_seconds_sum{version=\"").append(version).append("\"} ").append(interRequestHistSum.sum()).append("\n");
+        sb.append("sms_inter_request_duration_seconds_count{version=\"").append(version).append("\"} ").append(interRequestHistCount.get()).append("\n");
+
+        // 6. Counter: sms_pages_abandoned_total
+        sb.append("# HELP sms_pages_abandoned_total Total number of abandoned SMS pages\n");
+        sb.append("# TYPE sms_pages_abandoned_total counter\n");
+        sb.append("sms_pages_abandoned_total{version=\"").append(version).append("\"} ").append(pageAbandoned.get()).append("\n");
 
         return ResponseEntity.ok().body(sb.toString());
     }
