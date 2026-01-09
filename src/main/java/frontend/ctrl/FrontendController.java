@@ -59,9 +59,11 @@ public class FrontendController {
     private final DoubleAdder interRequestHistSum = new DoubleAdder();
     private final AtomicLong interRequestHistCount = new AtomicLong();
 
+    private final RestTemplateBuilder rest;
+    private final AtomicLong pageAbandoned = new AtomicLong();
+    private final String version;
+
     private String modelHost;
-    private RestTemplateBuilder rest;
-    private String version;
     private long prevRequestTime;
 
     public FrontendController(RestTemplateBuilder rest, Environment env, BuildProperties buildProperties) {
@@ -96,8 +98,12 @@ public class FrontendController {
         // Store the time of page opening
         session.setAttribute("pageOpenTime", System.nanoTime());
         session.setAttribute("firstReq", true);
+
+        pageAbandoned.incrementAndGet();
+        session.setAttribute("hasMadePrediction", false);
+
         m.addAttribute("hostname", modelHost);
-        this.prevRequestTime = System.nanoTime();
+        prevRequestTime = System.nanoTime();
         return "sms/index";
     }
 
@@ -108,8 +114,8 @@ public class FrontendController {
 
         long startTime = System.nanoTime();
         long firstReqTime = startTime - (long)session.getAttribute("pageOpenTime");
-        long interRequestTime = startTime - this.prevRequestTime;
-        this.prevRequestTime = startTime;
+        long interRequestTime = startTime - prevRequestTime;
+        prevRequestTime = startTime;
 
         try {
             sms.result = getPrediction(sms);
@@ -173,6 +179,11 @@ public class FrontendController {
         if (interRequestSeconds <= 15.0) interRequestHistBucket15.incrementAndGet();
         if (interRequestSeconds <= 30.0) interRequestHistBucket30.incrementAndGet();
         interRequestHistBucketInf.incrementAndGet(); // +Inf always increments
+
+        if (!(boolean)session.getAttribute("hasMadePrediction")) {
+            pageAbandoned.decrementAndGet();
+            session.setAttribute("hasMadePrediction", true);
+        }
     }
 
     // --- Prometheus endpoint ---
@@ -225,6 +236,11 @@ public class FrontendController {
         sb.append("sms_inter_request_duration_seconds_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(interRequestHistBucketInf.get()).append("\n");
         sb.append("sms_inter_request_duration_seconds_sum{version=\"").append(version).append("\"} ").append(interRequestHistSum.sum()).append("\n");
         sb.append("sms_inter_request_duration_seconds_count{version=\"").append(version).append("\"} ").append(interRequestHistCount.get()).append("\n");
+
+        // 6. Counter: sms_pages_abandoned_total
+        sb.append("# HELP sms_pages_abandoned_total Total number of abandoned SMS pages\n");
+        sb.append("# TYPE sms_pages_abandoned_total counter\n");
+        sb.append("sms_pages_abandoned_total{version=\"").append(version).append("\"} ").append(pageAbandoned.get()).append("\n");
 
         return ResponseEntity.ok().body(sb.toString());
     }
