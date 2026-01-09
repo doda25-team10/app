@@ -51,6 +51,7 @@ public class FrontendController {
 
     private String modelHost;
     private RestTemplateBuilder rest;
+    private String version;
 
     public FrontendController(RestTemplateBuilder rest, Environment env, BuildProperties buildProperties) {
         this.rest = rest;
