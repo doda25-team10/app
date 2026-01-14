@@ -113,6 +113,14 @@ public class FrontendController {
         System.out.printf("Requesting prediction for \"%s\" ...\n", sms.sms);
 
         long startTime = System.nanoTime();
+
+        if (session.getAttribute("pageOpenTime") == null) {
+            session.setAttribute("pageOpenTime", startTime);
+            session.setAttribute("firstReq", true);
+            session.setAttribute("hasMadePrediction", false);
+        }
+
+
         long firstReqTime = startTime - (long)session.getAttribute("pageOpenTime");
         long interRequestTime = startTime - prevRequestTime;
         prevRequestTime = startTime;
@@ -156,7 +164,8 @@ public class FrontendController {
         if (durationSeconds <= 1.0) histBucket10.incrementAndGet();
         histBucketInf.incrementAndGet(); // +Inf always increments
 
-        if((boolean)session.getAttribute("firstReq")) {
+        Boolean firstReq = (Boolean)session.getAttribute("firstReq");
+        if(firstReq != null && firstReq) {
             session.setAttribute("firstReq", false);
             double firstReqSeconds = firstReqTime / 1_000_000_000.0;
             firstRequestHistSum.add(firstReqSeconds);
@@ -180,7 +189,8 @@ public class FrontendController {
         if (interRequestSeconds <= 30.0) interRequestHistBucket30.incrementAndGet();
         interRequestHistBucketInf.incrementAndGet(); // +Inf always increments
 
-        if (!(boolean)session.getAttribute("hasMadePrediction")) {
+        Boolean hasMadePrediction = (Boolean)session.getAttribute("hasMadePrediction");
+        if (hasMadePrediction != null && !hasMadePrediction) {
             pageAbandoned.decrementAndGet();
             session.setAttribute("hasMadePrediction", true);
         }
