@@ -118,6 +118,8 @@ public class FrontendController {
             session.setAttribute("pageOpenTime", startTime);
             session.setAttribute("firstReq", true);
             session.setAttribute("hasMadePrediction", false);
+            pageAbandoned.incrementAndGet();
+            prevRequestTime = System.nanoTime();
         }
 
 
