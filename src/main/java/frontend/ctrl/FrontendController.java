@@ -59,6 +59,19 @@ public class FrontendController {
     private final DoubleAdder interRequestHistSum = new DoubleAdder();
     private final AtomicLong interRequestHistCount = new AtomicLong();
 
+    // Counter: sms_upstream_errors_total
+    private final AtomicLong counterUpstreamErrors = new AtomicLong();
+
+    // Histogram: sms_input_length_histogram
+    // Buckets: 10, 50, 100, 160, +Inf
+    private final AtomicLong lengthBucket10 = new AtomicLong();
+    private final AtomicLong lengthBucket50 = new AtomicLong();
+    private final AtomicLong lengthBucket100 = new AtomicLong();
+    private final AtomicLong lengthBucket160 = new AtomicLong();
+    private final AtomicLong lengthBucketInf = new AtomicLong();
+    private final AtomicLong lengthSum = new AtomicLong();
+    private final AtomicLong lengthCount = new AtomicLong();
+
     private final RestTemplateBuilder rest;
     private final AtomicLong pageAbandoned = new AtomicLong();
     private final String version;
@@ -143,8 +156,12 @@ public class FrontendController {
             var url = new URI(modelHost + "/predict");
             var c = rest.build().postForEntity(url, sms, Sms.class);
             return c.getBody().result.trim();
-        } catch (URISyntaxException e) {
-            throw new RuntimeException(e);
+        } catch (Exception e) {
+            counterUpstreamErrors.incrementAndGet();
+            if (e instanceof URISyntaxException) {
+                throw new RuntimeException(e);
+            }
+            throw new RuntimeException("Failed to call model service", e);
         }
     }
 
@@ -196,6 +213,15 @@ public class FrontendController {
             pageAbandoned.decrementAndGet();
             session.setAttribute("hasMadePrediction", true);
         }
+
+        // sms_input_length_histogram
+        lengthSum.addAndGet(length);
+        lengthCount.incrementAndGet();
+        if (length <= 10) lengthBucket10.incrementAndGet();
+        if (length <= 50) lengthBucket50.incrementAndGet();
+        if (length <= 100) lengthBucket100.incrementAndGet();
+        if (length <= 160) lengthBucket160.incrementAndGet();
+        lengthBucketInf.incrementAndGet(); // +Inf always increments
     }
 
     // --- Prometheus endpoint ---
@@ -253,6 +279,23 @@ public class FrontendController {
         sb.append("# HELP sms_pages_abandoned_total Total number of abandoned SMS pages\n");
         sb.append("# TYPE sms_pages_abandoned_total counter\n");
         sb.append("sms_pages_abandoned_total{version=\"").append(version).append("\"} ").append(pageAbandoned.get()).append("\n");
+
+        // 7. Counter: sms_upstream_errors_total
+        sb.append("# HELP sms_upstream_errors_total Total number of failed calls to model-service\n");
+        sb.append("# TYPE sms_upstream_errors_total counter\n");
+        sb.append("sms_upstream_errors_total{version=\"").append(version).append("\"} ").append(counterUpstreamErrors.get()).append("\n");
+
+        // 8. Histogram: sms_input_length_histogram
+        sb.append("# HELP sms_input_length_histogram Distribution of SMS message lengths\n");
+        sb.append("# TYPE sms_input_length_histogram histogram\n");
+        sb.append("sms_input_length_histogram_bucket{le=\"10\",version=\"").append(version).append("\"} ").append(lengthBucket10.get()).append("\n");
+        sb.append("sms_input_length_histogram_bucket{le=\"50\",version=\"").append(version).append("\"} ").append(lengthBucket50.get()).append("\n");
+        sb.append("sms_input_length_histogram_bucket{le=\"100\",version=\"").append(version).append("\"} ").append(lengthBucket100.get()).append("\n");
+        sb.append("sms_input_length_histogram_bucket{le=\"160\",version=\"").append(version).append("\"} ").append(lengthBucket160.get()).append("\n");
+        sb.append("sms_input_length_histogram_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(lengthBucketInf.get()).append("\n");
+        sb.append("sms_input_length_histogram_sum{version=\"").append(version).append("\"} ").append(lengthSum.get()).append("\n");
+        sb.append("sms_input_length_histogram_count{version=\"").append(version).append("\"} ").append(lengthCount.get()).append("\n");
+
 
         return ResponseEntity.ok().body(sb.toString());
     }
