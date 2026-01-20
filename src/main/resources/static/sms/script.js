@@ -1,6 +1,33 @@
 $(document).ready(function() {
 
-	function getSMS() {
+    var pageStartMs = Date.now();
+    var sessionReported = false;
+
+    function reportSession() {
+        if (sessionReported) return;
+        sessionReported = true;
+
+        var payload = JSON.stringify({
+            timeSpentSeconds: (Date.now() - pageStartMs) / 1000.0
+        });
+
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon("./session", new Blob([payload], { type: "application/json" }));
+        } else {
+            fetch("./session", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+                keepalive: true
+            });
+        }
+    }
+
+    window.addEventListener("pagehide", reportSession);
+    window.addEventListener("beforeunload", reportSession);
+
+
+    function getSMS() {
 		return $("textarea").val().trim()
 	}
 	
