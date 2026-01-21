@@ -226,14 +226,11 @@ public class FrontendController {
         }
         session.setAttribute("sessionMetricsRecorded", true);
 
-        double timeSpentSeconds = 0.0;
-        Object openObj = session.getAttribute("pageOpenTime");
-        if (openObj instanceof Long) {
-            long open = (Long) openObj;
-            timeSpentSeconds = (System.nanoTime() - open) / 1_000_000_000.0;
-        } else if (report != null && report.timeSpentSeconds != null) {
-            timeSpentSeconds = report.timeSpentSeconds;
+        if (report == null || report.timeSpentSeconds == null || report.timeSpentSeconds.isNaN() || report.timeSpentSeconds < 0.0) {
+            return ResponseEntity.ok().build();
         }
+
+        double timeSpentSeconds = report.timeSpentSeconds;
 
         timeOnPageSum.add(timeSpentSeconds);
         timeOnPageCount.incrementAndGet();
@@ -244,7 +241,6 @@ public class FrontendController {
         if (timeSpentSeconds <= 60) timeOnPageBucket60.incrementAndGet();
         if (timeSpentSeconds <= 120) timeOnPageBucket120.incrementAndGet();
         timeOnPageBucketInf.incrementAndGet();
-
 
         return ResponseEntity.ok().build();
     }
