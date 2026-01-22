@@ -59,6 +59,18 @@ public class FrontendController {
     private final DoubleAdder interRequestHistSum = new DoubleAdder();
     private final AtomicLong interRequestHistCount = new AtomicLong();
 
+    // Buckets: 5s, 10s, 20s, 30s, 60s, 120s, +Inf
+    private final AtomicLong timeOnPageBucket05 = new AtomicLong();
+    private final AtomicLong timeOnPageBucket10 = new AtomicLong();
+    private final AtomicLong timeOnPageBucket20 = new AtomicLong();
+    private final AtomicLong timeOnPageBucket30 = new AtomicLong();
+    private final AtomicLong timeOnPageBucket60 = new AtomicLong();
+    private final AtomicLong timeOnPageBucket120 = new AtomicLong();
+    private final AtomicLong timeOnPageBucketInf = new AtomicLong();
+    private final DoubleAdder timeOnPageSum = new DoubleAdder();
+    private final AtomicLong timeOnPageCount = new AtomicLong();
+
+
     private final RestTemplateBuilder rest;
     private final AtomicLong pageAbandoned = new AtomicLong();
     private final String version;
@@ -98,6 +110,7 @@ public class FrontendController {
         // Store the time of page opening
         session.setAttribute("pageOpenTime", System.nanoTime());
         session.setAttribute("firstReq", true);
+        session.setAttribute("sessionMetricsRecorded", false);
 
         pageAbandoned.incrementAndGet();
         session.setAttribute("hasMadePrediction", false);
@@ -118,6 +131,7 @@ public class FrontendController {
             session.setAttribute("pageOpenTime", startTime);
             session.setAttribute("firstReq", true);
             session.setAttribute("hasMadePrediction", false);
+            session.setAttribute("sessionMetricsRecorded", false);
             pageAbandoned.incrementAndGet();
             prevRequestTime = System.nanoTime();
         }
@@ -198,6 +212,40 @@ public class FrontendController {
         }
     }
 
+    public static class SessionReport {
+        public Double timeSpentSeconds;
+    }
+
+    @PostMapping(value = "/session", consumes = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseBody
+    public ResponseEntity<Void> reportSession(@RequestBody(required = false) SessionReport report, HttpSession session) {
+
+        Boolean alreadyRecorded = (Boolean) session.getAttribute("sessionMetricsRecorded");
+        if (alreadyRecorded != null && alreadyRecorded) {
+            return ResponseEntity.ok().build();
+        }
+        session.setAttribute("sessionMetricsRecorded", true);
+
+        if (report == null || report.timeSpentSeconds == null || report.timeSpentSeconds.isNaN() || report.timeSpentSeconds < 0.0) {
+            return ResponseEntity.ok().build();
+        }
+
+        double timeSpentSeconds = report.timeSpentSeconds;
+
+        timeOnPageSum.add(timeSpentSeconds);
+        timeOnPageCount.incrementAndGet();
+        if (timeSpentSeconds <= 5) timeOnPageBucket05.incrementAndGet();
+        if (timeSpentSeconds <= 10) timeOnPageBucket10.incrementAndGet();
+        if (timeSpentSeconds <= 20) timeOnPageBucket20.incrementAndGet();
+        if (timeSpentSeconds <= 30) timeOnPageBucket30.incrementAndGet();
+        if (timeSpentSeconds <= 60) timeOnPageBucket60.incrementAndGet();
+        if (timeSpentSeconds <= 120) timeOnPageBucket120.incrementAndGet();
+        timeOnPageBucketInf.incrementAndGet();
+
+        return ResponseEntity.ok().build();
+    }
+
+
     // --- Prometheus endpoint ---
     @GetMapping(value = "/metrics", produces = MediaType.TEXT_PLAIN_VALUE)
     @ResponseBody
@@ -253,6 +301,21 @@ public class FrontendController {
         sb.append("# HELP sms_pages_abandoned_total Total number of abandoned SMS pages\n");
         sb.append("# TYPE sms_pages_abandoned_total counter\n");
         sb.append("sms_pages_abandoned_total{version=\"").append(version).append("\"} ").append(pageAbandoned.get()).append("\n");
+
+
+        // 7. Histogram: sms_time_on_page_seconds
+        sb.append("# HELP sms_time_on_page_seconds Time a user spends on the page (seconds)\n");
+        sb.append("# TYPE sms_time_on_page_seconds histogram\n");
+        sb.append("sms_time_on_page_seconds_bucket{le=\"5\",version=\"").append(version).append("\"} ").append(timeOnPageBucket05.get()).append("\n");
+        sb.append("sms_time_on_page_seconds_bucket{le=\"10\",version=\"").append(version).append("\"} ").append(timeOnPageBucket10.get()).append("\n");
+        sb.append("sms_time_on_page_seconds_bucket{le=\"20\",version=\"").append(version).append("\"} ").append(timeOnPageBucket20.get()).append("\n");
+        sb.append("sms_time_on_page_seconds_bucket{le=\"30\",version=\"").append(version).append("\"} ").append(timeOnPageBucket30.get()).append("\n");
+        sb.append("sms_time_on_page_seconds_bucket{le=\"60\",version=\"").append(version).append("\"} ").append(timeOnPageBucket60.get()).append("\n");
+        sb.append("sms_time_on_page_seconds_bucket{le=\"120\",version=\"").append(version).append("\"} ").append(timeOnPageBucket120.get()).append("\n");
+        sb.append("sms_time_on_page_seconds_bucket{le=\"+Inf\",version=\"").append(version).append("\"} ").append(timeOnPageBucketInf.get()).append("\n");
+        sb.append("sms_time_on_page_seconds_sum{version=\"").append(version).append("\"} ").append(timeOnPageSum.sum()).append("\n");
+        sb.append("sms_time_on_page_seconds_count{version=\"").append(version).append("\"} ").append(timeOnPageCount.get()).append("\n");
+
 
         return ResponseEntity.ok().body(sb.toString());
     }
