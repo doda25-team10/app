@@ -2,6 +2,7 @@ package frontend.ctrl;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.DoubleAdder;
 
@@ -154,7 +155,11 @@ public class FrontendController {
     private String getPrediction(Sms sms) {
         try {
             var url = new URI(modelHost + "/predict");
-            var c = rest.build().postForEntity(url, sms, Sms.class);
+            var c = rest
+                    .setConnectTimeout(Duration.ofSeconds(3))
+                    .setReadTimeout(Duration.ofSeconds(3))
+                    .build()
+                    .postForEntity(url, sms, Sms.class);
             return c.getBody().result.trim();
         } catch (Exception e) {
             counterUpstreamErrors.incrementAndGet();
@@ -181,7 +186,7 @@ public class FrontendController {
         if (durationSeconds <= 0.1) histBucket01.incrementAndGet();
         if (durationSeconds <= 0.5) histBucket05.incrementAndGet();
         if (durationSeconds <= 1.0) histBucket10.incrementAndGet();
-        histBucketInf.incrementAndGet(); // +Inf always increments
+        histBucketInf.incrementAndGet();
 
         Boolean firstReq = (Boolean)session.getAttribute("firstReq");
         if(firstReq != null && firstReq) {
@@ -195,7 +200,7 @@ public class FrontendController {
             if (firstReqSeconds <= 10.0) firstRequestHistBucket10.incrementAndGet();
             if (firstReqSeconds <= 15.0) firstRequestHistBucket15.incrementAndGet();
             if (firstReqSeconds <= 30.0) firstRequestHistBucket30.incrementAndGet();
-            firstRequestHistBucketInf.incrementAndGet(); // +Inf always increments
+            firstRequestHistBucketInf.incrementAndGet();
         }
 
         double interRequestSeconds = interRequestTime / 1_000_000_000.0;
@@ -206,7 +211,7 @@ public class FrontendController {
         if (interRequestSeconds <= 10.0) interRequestHistBucket10.incrementAndGet();
         if (interRequestSeconds <= 15.0) interRequestHistBucket15.incrementAndGet();
         if (interRequestSeconds <= 30.0) interRequestHistBucket30.incrementAndGet();
-        interRequestHistBucketInf.incrementAndGet(); // +Inf always increments
+        interRequestHistBucketInf.incrementAndGet();
 
         Boolean hasMadePrediction = (Boolean)session.getAttribute("hasMadePrediction");
         if (hasMadePrediction != null && !hasMadePrediction) {
@@ -221,7 +226,7 @@ public class FrontendController {
         if (length <= 50) lengthBucket50.incrementAndGet();
         if (length <= 100) lengthBucket100.incrementAndGet();
         if (length <= 160) lengthBucket160.incrementAndGet();
-        lengthBucketInf.incrementAndGet(); // +Inf always increments
+        lengthBucketInf.incrementAndGet();
     }
 
     // --- Prometheus endpoint ---
